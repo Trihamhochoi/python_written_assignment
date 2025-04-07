@@ -1,6 +1,10 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 **/.idea/
-**/.env
+**/Guideline/
+**/image/
 **/.ipynb_checkpoints/
 **/*.docx
+**/*.pdf
+**/.env
+
