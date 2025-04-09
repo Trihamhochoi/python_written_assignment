@@ -12,7 +12,7 @@ class LinearRegressionError(Exception):
     pass
 
 
-class LinearRegressionModel:
+class LinearRegressionModel(DataLoader):
     """
     A simple linear regression model to compute slope, intercept,
     and mean deviation error between two sets of data.
@@ -22,11 +22,16 @@ class LinearRegressionModel:
     ideal_df: The ideal dataframe is loaded from database
     """
 
-    def __init__(self, train_df, test_df, ideal_df):
+    def __init__(self, db_name:str,data_dict:dict):
+        """
+        Initialize 3 dataset we save before
+        """
         # Initialization
-        self.train_df = train_df
-        self.test_df = test_df
-        self.ideal_df = ideal_df
+        super().__init__(db_name=db_name)
+        self.ideal_dict = None
+        self.train_df,self.test_df,self.ideal_df = self.store_three_dataset_into_db(dict_csv=data_dict)
+        # self.test_df = test_df
+        # self.ideal_df = ideal_df
         self.x = None
         self.slope = None
         self.intercept = None
@@ -237,7 +242,7 @@ class LinearRegressionModel:
         chosen_ideal_df = self.ideal_df[feat_col].rename(columns=ideal_feat_rename_dict)
 
         df_merge = (pd.merge(left=self.test_df, right=chosen_ideal_df, on='x', how='left')
-                    .rename(columns={'y': 'y_test'}))
+                    .rename(columns={'x':'x_test','y': 'y_test'}))
         # print(df_merge.info())
         # print(df_merge.describe())
 
@@ -248,7 +253,8 @@ class LinearRegressionModel:
                                                                                    y_ideal2=x[rename_ls[1]],
                                                                                    y_ideal3=x[rename_ls[2]],
                                                                                    y_ideal4=x[rename_ls[3]],
-                                                                                   ideal_dict=ideal_dict,get_bool=False
+                                                                                   ideal_dict=ideal_dict,
+                                                                                   get_bool=False
                                                                                    ), axis=1)
         # bool_criterion = df_merge.apply(lambda x: self.criteria_eval_test_ideal(y_test=x['y_test'],
         #                                                                            y_ideal1=x[rename_ls[0]],
@@ -257,10 +263,25 @@ class LinearRegressionModel:
         #                                                                            y_ideal4=x[rename_ls[3]],
         #                                                                            ideal_dict=ideal_dict, get_bool=True
         #                                                                            ), axis=1)
+        # df_merge['bool_criterion'] = bool_criterion
 
-        # df_merge['result'] = mapping_criterion
         df_merge[['diff_deviation', 'ideal_func']] = mapping_criterion.apply(pd.Series)
-        #df_merge['bool_criterion'] = bool_criterion
+
+        # Save the best of 4 ideal function
+        self.ideal_dict = ideal_dict
+        ideal_key_ls = list(ideal_dict.keys())
+        ideal_value_ls = list(ideal_dict.values())
+        for a, b in zip(ideal_key_ls, ideal_value_ls):
+            b['set'] = a
+        four_ideal_df = pd.DataFrame(ideal_value_ls)
+        if not self.check_tb_exists(tb_name='four_best_ideal_tb'):
+            self.save_df_into_db(df=four_ideal_df,table_name='four_best_ideal_tb')
+
+        # Save df to sqlite database
+        feat = ['x_test', 'y_test', 'diff_deviation', 'ideal_func']
+        if not self.check_tb_exists(tb_name='eval_test_tb'):
+            self.save_df_into_db(df=df_merge[feat],table_name='eval_test_tb')
+
         return df_merge
 
 
@@ -273,16 +294,19 @@ if __name__ == '__main__':
     data_dict = {'train': os.path.join('Dataset', 'train.csv'),
                  'test': os.path.join('Dataset', 'test.csv'),
                  'ideal': os.path.join('Dataset', 'ideal.csv'), }
-    loader = DataLoader(db_name="data.db")
+    # Build Model along with Loader
+    #loader = DataLoader(db_name="data.db")
+    reg_model = LinearRegressionModel(db_name="data.db",data_dict=data_dict)
     # get train, test and ideal set
-    train_df, test_df, ideal_df = loader.store_data_into_db(dict_csv=data_dict)
+    #train_df, test_df, ideal_df = loader.store_three_dataset_into_db(dict_csv=data_dict)
 
     # Build model
-    reg_model = LinearRegressionModel(train_df, test_df, ideal_df)
+    #reg_model = LinearRegressionModel(train_df, test_df, ideal_df)
     # best_ideal_dict = reg_model.choose_y_ideal(set_id=1)
     # print(best_ideal_dict)
 
     # evaluate with test set
     eval_df = reg_model.eval_test_set()
+    print(reg_model.ideal_dict)
     print(eval_df.info())
     print(eval_df.head(20).to_string())
