@@ -1,10 +1,17 @@
-from typing import Literal, Tuple, List, Dict
+from typing import Literal, Tuple, List, Dict, Optional
 import math
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os, sys
 
-from dataloader import DataLoader
+current_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root_path = os.path.dirname(current_path)
+# Add 'WrittenAssignment' directory to sys.path
+sys.path.insert(0, root_path)
+from Code.dataloader import DataLoader
 
 
 class LinearRegressionError(Exception):
@@ -29,14 +36,14 @@ class LinearRegressionModel(DataLoader):
         # Initialization
         super().__init__(db_name=db_name)
         self.ideal_dict = None
-        self.train_df,self.test_df,self.ideal_df = self.store_three_dataset_into_db(dict_csv=data_dict)
+        self.train_df, self.test_df, self.ideal_df = self.store_three_dataset_into_db(dict_csv=data_dict)
         # self.test_df = test_df
         # self.ideal_df = ideal_df
         self.x = None
         self.slope = None
         self.intercept = None
 
-    def extract_x_y(self, is_train: bool, set_id: Literal[1, 2, 3, 4] = 1) -> Tuple[np.ndarray, np.ndarray]:
+    def extract_x_y(self, is_train: bool, set_id: int = 1) -> Tuple[np.ndarray, np.ndarray]:
         """
         Extract X, Y from train and test dataframes.
         :param is_train: Choose between train and test dataframes.
@@ -50,7 +57,8 @@ class LinearRegressionModel(DataLoader):
             x, y = self.test_df['x'].values, self.test_df['y'].values
             return x, y
 
-    def calculate_intercept_slope(self, set_id: Literal[1, 2, 3, 4] = 1):
+    #todo ----------- TRAINING: CALCULATE INTERCEPT AND SLOPE -----------
+    def calculate_intercept_slope(self, set_id: int = 1):
         """
         Fit the model to the training data and compute slope and intercept.
 
@@ -79,7 +87,7 @@ class LinearRegressionModel(DataLoader):
         intercept = y_mean - slope * x_mean
         return slope, intercept
 
-    def get_yhat(self, set_id: Literal[1, 2, 3, 4] = 1) -> np.ndarray:
+    def get_yhat(self, set_id: int = 1) -> np.ndarray:
         """
         Calculate y hat given train x-values based on slope and intercept was calculated before.
 
@@ -124,7 +132,7 @@ class LinearRegressionModel(DataLoader):
 
     # According to the defined metrics, Choose the best ideal function for assigned set
     def choose_y_ideal(self,
-                       set_id: Literal[1, 2, 3, 4] = 1) -> dict:
+                       set_id: int = 1) -> dict:
         """
         According to the defined metrics, Choose the best ideal function for assigned set
         :param set_id: set id we want to choose
@@ -159,6 +167,7 @@ class LinearRegressionModel(DataLoader):
                                        'max_deviation': max_deviation, }}
         return ideal_dict
 
+    #TODO ----------- EVALUATION -----------
     def criteria_eval_test_ideal(self,
                                  y_test: float,
                                  y_ideal1: float,
@@ -284,6 +293,95 @@ class LinearRegressionModel(DataLoader):
 
         return df_merge
 
+    #TODO ----------- VISUALIZATION -----------
+    def visual_ideal_plot(self,X,y,set_id:int,is_save_plot:bool=False):
+        """
+        Show visual regression plot between ideal set and train set with specific setID
+        :param is_save_plot: bool default False: Save plot to png image or not
+        :param X: X train
+        :param y: y train
+        :param set_id: chosen ideal set from 1 to 4
+        :return: matplotlib figure
+        """
+        X_train, y_train = self.extract_x_y(is_train=True, set_id=set_id)
+        ideal_dict = self.choose_y_ideal(set_id=set_id)
+        y_chosen = ideal_dict[f'set{set_id}']['ideal_set']
+        y_ideal_set = self.ideal_df[y_chosen].values
+
+        # Create plot for 3 set
+        sns.set_style("darkgrid")
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        sns.scatterplot(x=X_train, y=y_train, ax=ax, label=f'train set {set_id}', alpha=0.5)
+        sns.lineplot(x=X_train,
+                     y=y_ideal_set,
+                     ax=ax,
+                     color='red',
+                     lw=2,
+                     label=f'ideal function {y_chosen}')
+        plt.title(f"Set {set_id} with ideal function {y_chosen}")
+        if is_save_plot:
+            # Save the plot before showing
+            plt.savefig(f"../Plot_image/set_{set_id}_with_ideal_func_{y_chosen}.png", dpi=300, bbox_inches='tight')
+        plt.show()
+
+    @staticmethod
+    def get_ls_color(labels:list)->dict:
+        # Get the first 4 colors from the "deep" palette
+        deep_colors = sns.color_palette("deep", n_colors=4)
+        # Map each label to a color
+        color_order_dict = dict(zip(labels, deep_colors))
+        return color_order_dict
+
+    def visual_4_ideal_func_test_set(self,X_train, is_save_plot:bool=False):
+        """
+        Create 4 line plot of 4 ideal function vs scatter plot of test set
+        :param is_save_plot: bool default False: Save plot to png image or not
+        :return:
+        """
+        # Evaluate the test set with 4 ideal function
+        if not self.check_tb_exists(tb_name='eval_test_tb'):
+            eval_df = self.eval_test_set()
+        else:
+            eval_df = self.load_table_as_df(tb_name='eval_test_tb')
+
+        # Get full ideal set
+        ideal_ls = self.load_table_as_df(tb_name='four_best_ideal_tb').to_dict(orient='records')
+        ideal_dict = {i['set']: {'ideal_set': i['ideal_set']} for i in ideal_ls}
+        four_ideal_func_ls = [v['ideal_set'] for k, v in ideal_dict.items()]
+        color_dict = self.get_ls_color(labels=four_ideal_func_ls)
+
+        # Create plot for eval set
+        sns.set_style("darkgrid")
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        sns.scatterplot(data=eval_df,  # .fillna(value={'ideal_func':'other'})
+                        x='x_test',
+                        y='y_test',
+                        hue='ideal_func',
+                        palette=color_dict,
+                        ax=ax)
+
+        # Get y ideal
+        for s_id in range(1,5):
+            y_chosen = ideal_dict[f'set{s_id}']['ideal_set']
+            y_ideal_set = self.ideal_df[y_chosen].values
+            sns.lineplot(x=X_train,
+                         y=y_ideal_set,
+                         ax=ax,
+                         lw=1,
+                         label=f'ideal function {y_chosen}')
+
+        # Move legend
+        plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0.)
+        plt.title(f"Test Set with The best 4 ideal function")
+
+        plt.tight_layout()  # Optional: adjust layout to make room
+        # Save the plot before showing
+        if is_save_plot:
+            plt.savefig(f"../Image/test_set_with_best_4_ideal_func.png", dpi=300, bbox_inches='tight')
+        plt.show()
+
 
 if __name__ == '__main__':
     from dataloader import DataLoader
@@ -300,13 +398,18 @@ if __name__ == '__main__':
     # get train, test and ideal set
     #train_df, test_df, ideal_df = loader.store_three_dataset_into_db(dict_csv=data_dict)
 
-    # Build model
-    #reg_model = LinearRegressionModel(train_df, test_df, ideal_df)
+    # 1. Build model
     # best_ideal_dict = reg_model.choose_y_ideal(set_id=1)
     # print(best_ideal_dict)
 
-    # evaluate with test set
-    eval_df = reg_model.eval_test_set()
-    print(reg_model.ideal_dict)
-    print(eval_df.info())
-    print(eval_df.head(20).to_string())
+    # 2. evaluate with test set
+    # eval_df = reg_model.eval_test_set()
+    # print(reg_model.ideal_dict)
+    # print(eval_df.info())
+    # print(eval_df.head(20).to_string())
+
+    # 3. Visualize plot of ideal function
+    # Extract X y
+    set_id = 1
+    X_train, y_train = reg_model.extract_x_y(is_train=True, set_id=set_id)
+    reg_model.regression_plot(X_train, y_train, set_id=set_id)

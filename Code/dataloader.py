@@ -1,7 +1,6 @@
 import os
-import sqlite3
 import pandas as pd
-from sqlalchemy import create_engine, Column, Integer, Float, String, MetaData, Table, inspect
+from sqlalchemy import create_engine, MetaData, inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing import List, Literal, Union, Optional, Dict, Any, Tuple
 import sys
