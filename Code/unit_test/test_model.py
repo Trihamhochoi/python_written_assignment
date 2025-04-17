@@ -84,7 +84,7 @@ class TestLinearRegressionModel(unittest.TestCase):
         self.assertIn('ideal_set', result)
 
     def test_eval_test_set(self):
-        df_eval = self.model.eval_test_set()
+        df_eval = self.model.eval_test_set(save_data=True)
         print("\nEvaluated Test Set Sample:\n", df_eval.head())
         self.assertIn('x_test', df_eval.columns)
         self.assertIn('y_test', df_eval.columns)

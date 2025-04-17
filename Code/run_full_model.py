@@ -20,6 +20,6 @@ X_train, y_train = reg_model.extract_x_y(is_train=True, set_id=set_id)
 
 
 reg_model.visual_ideal_plot(X_train, y_train, set_id=set_id)
-reg_model.visual_4_ideal_func_test_set(X_train,is_save_plot=False)
+reg_model.visual_4_ideal_func_test_set(X_train,is_save_plot=True,re_run=True)
 # ideal_dict = reg_model.load_table_as_df(tb_name='four_best_ideal_tb').to_dict(orient='records')
 # print(ideal_dict)

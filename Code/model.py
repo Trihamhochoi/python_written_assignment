@@ -2,6 +2,7 @@ from typing import Literal, Tuple, List, Dict, Optional
 import math
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -29,7 +30,7 @@ class LinearRegressionModel(DataLoader):
     ideal_df: The ideal dataframe is loaded from database
     """
 
-    def __init__(self, db_name:str,data_dict:dict):
+    def __init__(self, db_name: str, data_dict: dict):
         """
         Initialize 3 dataset we save before
         """
@@ -174,7 +175,7 @@ class LinearRegressionModel(DataLoader):
                                  y_ideal2: float,
                                  y_ideal3: float,
                                  y_ideal4: float,
-                                 ideal_dict: dict,get_bool:bool) -> Dict:
+                                 ideal_dict: dict, get_bool: bool) -> Dict:
         # Calculate the difference between y_test and 4 y_ideal:
         diff_deviation1 = abs(y_test - y_ideal1)
         diff_deviation2 = abs(y_test - y_ideal2)
@@ -196,7 +197,7 @@ class LinearRegressionModel(DataLoader):
         sort_a = a[a[:, 0].argsort()[::-1]]
 
         # Check condition if diff deviation (1st) is lower than the maximum deviation (2nd) by sqrt(2)
-        cond = sort_a[:, 0] < sort_a[:, 1] * np.sqrt(2)
+        cond = abs(sort_a[:, 0] - sort_a[:, 1]) < np.sqrt(2)
 
         # get the fist index of condition
         try:
@@ -209,7 +210,7 @@ class LinearRegressionModel(DataLoader):
         # Get final result dictionary including 2 values diff_deviation and ideal set
         result_dict = {}
         if not np.isnan(re).all():
-            result_dict['diff_deviation'] = round(float(re[0]),3)
+            result_dict['diff_deviation'] = round(float(re[0]), 3)
             for idx, v in enumerate(arr_max_dev):
                 if v == re[1]:
                     ideal_set = ideal_dict[f'set{idx + 1}']['ideal_set']
@@ -229,7 +230,7 @@ class LinearRegressionModel(DataLoader):
             return result_dict
 
     # Evaluate the ideal set with test set
-    def eval_test_set(self):
+    def eval_test_set(self, save_data: bool = True) -> DataFrame:
         # Calculate the best four of ideal function
         ideal_dict = {}
         ideal_feat_rename_dict = {}
@@ -251,7 +252,7 @@ class LinearRegressionModel(DataLoader):
         chosen_ideal_df = self.ideal_df[feat_col].rename(columns=ideal_feat_rename_dict)
 
         df_merge = (pd.merge(left=self.test_df, right=chosen_ideal_df, on='x', how='left')
-                    .rename(columns={'x':'x_test','y': 'y_test'}))
+                    .rename(columns={'x': 'x_test', 'y': 'y_test'}))
         # print(df_merge.info())
         # print(df_merge.describe())
 
@@ -283,18 +284,18 @@ class LinearRegressionModel(DataLoader):
         for a, b in zip(ideal_key_ls, ideal_value_ls):
             b['set'] = a
         four_ideal_df = pd.DataFrame(ideal_value_ls)
-        if not self.check_tb_exists(tb_name='four_best_ideal_tb'):
-            self.save_df_into_db(df=four_ideal_df,table_name='four_best_ideal_tb')
+        if not self.check_tb_exists(tb_name='four_best_ideal_tb') or save_data:
+            self.save_df_into_db(df=four_ideal_df, table_name='four_best_ideal_tb')
 
         # Save df to sqlite database
         feat = ['x_test', 'y_test', 'diff_deviation', 'ideal_func']
-        if not self.check_tb_exists(tb_name='eval_test_tb'):
-            self.save_df_into_db(df=df_merge[feat],table_name='eval_test_tb')
+        if not self.check_tb_exists(tb_name='eval_test_tb') or save_data:
+            self.save_df_into_db(df=df_merge[feat], table_name='eval_test_tb')
 
         return df_merge
 
     #TODO ----------- VISUALIZATION -----------
-    def visual_ideal_plot(self,X,y,set_id:int,is_save_plot:bool=False):
+    def visual_ideal_plot(self, X, y, set_id: int, is_save_plot: bool = False):
         """
         Show visual regression plot between ideal set and train set with specific setID
         :param is_save_plot: bool default False: Save plot to png image or not
@@ -326,22 +327,24 @@ class LinearRegressionModel(DataLoader):
         plt.show()
 
     @staticmethod
-    def get_ls_color(labels:list)->dict:
+    def get_ls_color(labels: list) -> dict:
         # Get the first 4 colors from the "deep" palette
-        deep_colors = sns.color_palette("deep", n_colors=4)
+        deep_colors = sns.color_palette("bright", n_colors=len(labels))
         # Map each label to a color
         color_order_dict = dict(zip(labels, deep_colors))
+        color_order_dict['other'] = tuple([(v - 0.5) if idx == 2 else (v - 0.1) for idx, v in enumerate(color_order_dict['other'])])
         return color_order_dict
 
-    def visual_4_ideal_func_test_set(self,X_train, is_save_plot:bool=False):
+    def visual_4_ideal_func_test_set(self, X_train, is_save_plot: bool = False, re_run: bool = False):
         """
         Create 4 line plot of 4 ideal function vs scatter plot of test set
         :param is_save_plot: bool default False: Save plot to png image or not
+        :param re_run: bool default False: Re-run the test set evaluation
         :return:
         """
         # Evaluate the test set with 4 ideal function
-        if not self.check_tb_exists(tb_name='eval_test_tb'):
-            eval_df = self.eval_test_set()
+        if not self.check_tb_exists(tb_name='eval_test_tb') or re_run:
+            eval_df = self.eval_test_set(save_data=True).fillna(value={'ideal_func':'other'})
         else:
             eval_df = self.load_table_as_df(tb_name='eval_test_tb')
 
@@ -349,6 +352,7 @@ class LinearRegressionModel(DataLoader):
         ideal_ls = self.load_table_as_df(tb_name='four_best_ideal_tb').to_dict(orient='records')
         ideal_dict = {i['set']: {'ideal_set': i['ideal_set']} for i in ideal_ls}
         four_ideal_func_ls = [v['ideal_set'] for k, v in ideal_dict.items()]
+        four_ideal_func_ls.append('other')
         color_dict = self.get_ls_color(labels=four_ideal_func_ls)
 
         # Create plot for eval set
@@ -363,7 +367,7 @@ class LinearRegressionModel(DataLoader):
                         ax=ax)
 
         # Get y ideal
-        for s_id in range(1,5):
+        for s_id in range(1, 5):
             y_chosen = ideal_dict[f'set{s_id}']['ideal_set']
             y_ideal_set = self.ideal_df[y_chosen].values
             sns.lineplot(x=X_train,
@@ -379,7 +383,7 @@ class LinearRegressionModel(DataLoader):
         plt.tight_layout()  # Optional: adjust layout to make room
         # Save the plot before showing
         if is_save_plot:
-            plt.savefig(f"../Image/test_set_with_best_4_ideal_func.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"../Plot_image/test_set_with_best_4_ideal_func.png", dpi=300, bbox_inches='tight')
         plt.show()
 
 
@@ -394,7 +398,7 @@ if __name__ == '__main__':
                  'ideal': os.path.join('Dataset', 'ideal.csv'), }
     # Build Model along with Loader
     #loader = DataLoader(db_name="data.db")
-    reg_model = LinearRegressionModel(db_name="data.db",data_dict=data_dict)
+    reg_model = LinearRegressionModel(db_name="data.db", data_dict=data_dict)
     # get train, test and ideal set
     #train_df, test_df, ideal_df = loader.store_three_dataset_into_db(dict_csv=data_dict)
 
@@ -412,4 +416,4 @@ if __name__ == '__main__':
     # Extract X y
     set_id = 1
     X_train, y_train = reg_model.extract_x_y(is_train=True, set_id=set_id)
-    reg_model.regression_plot(X_train, y_train, set_id=set_id)
+    #reg_model.regression_plot(X_train, y_train, set_id=set_id)
