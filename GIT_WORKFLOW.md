@@ -34,7 +34,7 @@ Edit or add your Python files (e.g., `model.py`, `dataloader.py`, etc.). Once re
 
 ```bash
 git add .
-git commit -m "Added function to evaluate and save ideal plots"
+git commit -m "feat: Integrate the front-end code to model"
 ```
 
 > 📝 Use clear, concise commit messages describing your changes.
